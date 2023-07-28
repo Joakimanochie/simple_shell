@@ -1,166 +1,165 @@
 #include "shell.h"
 
 /**
- * c_strcat - concatenate two strings ignoring the first character ("~" in cd)
- * @dest: string to be appended to
- * @src: string to append
- * Return: concatenated string
+ * cd_dot - changes to the parent directory
+ *
+ * @datash: data relevant (environ)
+ *
+ * Return: no return
  */
-char *c_strcat(char *dest, char *src)
+void cd_dot(data_shell *datash)
 {
-	int len = 0;
-	int len2 = 0;
-	int total_len = 0;
-	int j = 0;
+	char pwd[PATH_MAX];
+	char *dir, *cp_pwd, *cp_strtok_pwd;
 
-	while (dest[len] != '\0')
+	getcwd(pwd, sizeof(pwd));
+	cp_pwd = _strdup(pwd);
+	set_env("OLDPWD", cp_pwd, datash);
+	dir = datash->args[1];
+	if (_strcmp(".", dir) == 0)
 	{
-		len++;
-		total_len++;
+		set_env("PWD", cp_pwd, datash);
+		free(cp_pwd);
+		return;
 	}
-	while (src[len2] != '\0')
+	if (_strcmp("/", cp_pwd) == 0)
 	{
-		len2++;
-		total_len++;
+		free(cp_pwd);
+		return;
 	}
-
-	dest = _realloc(dest, len, sizeof(char) * total_len + 1);
-
-	j = 1; 
-	while (src[j] != '\0')
+	cp_strtok_pwd = cp_pwd;
+	rev_string(cp_strtok_pwd);
+	cp_strtok_pwd = _strtok(cp_strtok_pwd, "/");
+	if (cp_strtok_pwd != NULL)
 	{
-		dest[len] = src[j];
-		len++;
-		j++;
+		cp_strtok_pwd = _strtok(NULL, "\0");
+
+		if (cp_strtok_pwd != NULL)
+			rev_string(cp_strtok_pwd);
 	}
-	dest[len] = '\0';
-
-	return (dest);
-}
-
-/**
- * c_setenv - custom _setenv by concatenating string first before setting
- * @env: environmental variable linked list
- * @name: environmental variable name (e.g. "OLDPWD")
- * @dir: directory path (e.g. "/home/vagrant/directory1")
- * Return: 0 on success (e.g. "OLDPWD=/home/vagrant/directory1")
- */
-int c_setenv(list_t **env, char *name, char *dir)
-{
-	int index = 0, j = 0;
-	char *cat;
-	list_t *holder;
-
-	cat = _strdup(name); 
-	cat = _strcat(cat, "=");
-	cat = _strcat(cat, dir);
-	index = find_env(*env, name);
-
-	holder = *env;
-	while (j < index)
+	if (cp_strtok_pwd != NULL)
 	{
-		holder = holder->next;
-		j++;
-	}
-	free(holder->var);
-	holder->var = _strdup(cat);
-	free(cat);
-	return (0);
-}
-
-/**
- * cd_only - change directory to home
- * @env: bring in environmental linked list to update PATH and OLDPWD
- * @current: bring in current working directotry
- */
-void cd_only(list_t *env, char *current)
-{
-	char *home = NULL;
-
-	home = get_env("HOME", env);
-	c_setenv(&env, "OLDPWD", current); 
-	free(current);
-	if (access(home, F_OK) == 0) 
-		chdir(home);
-	current = NULL;
-	current = getcwd(current, 0);
-	c_setenv(&env, "PWD", current); 
-	free(current);
-	free(home);
-}
-/**
- * cd_execute - executes the cd
- * @env: bring in environmental linked list to update PATH and OLDPWD
- * @current: bring in current working directotry
- * @dir: bring in directory path to change to
- * @str: bring in the 1st argument to write out error
- * @num: bring in the line number to write out error
- * Return: 0 if success 2 if fail
- */
-int cd_execute(list_t *env, char *current, char *dir, char *str, int num)
-{
-	int i = 0;
-
-	if (access(dir, F_OK) == 0)
-	{
-		c_setenv(&env, "OLDPWD", current);
-		free(current);
-		chdir(dir);
-		current = NULL;
-		current = getcwd(current, 0); 
-		c_setenv(&env, "PWD", current); 
-		free(current);
+		chdir(cp_strtok_pwd);
+		set_env("PWD", cp_strtok_pwd, datash);
 	}
 	else
 	{
-		cant_cd_to(str, num, env);
-		free(current);
-		i = 2;
+		chdir("/");
+		set_env("PWD", "/", datash);
 	}
-	return (i);
+	datash->status = 0;
+	free(cp_pwd);
 }
 
 /**
- * _cd - change directory
- * @str: user's typed in command
- * @env: enviromental linked list to retrieve HOME and OLDPWD paths
- * @num: nth user command, to be used at error message
- * Return: 0 if success 2 if failed
+ * cd_to - changes to a directory given
+ * by the user
+ *
+ * @datash: data relevant (directories)
+ * Return: no return
  */
-int _cd(char **str, list_t *env, int num)
+void cd_to(data_shell *datash)
 {
-	char *current = NULL, *dir = NULL;
-	int exit_stat = 0;
+	char pwd[PATH_MAX];
+	char *dir, *cp_pwd, *cp_dir;
 
-	current = getcwd(current, 0);
-	if (str[1] != NULL)
+	getcwd(pwd, sizeof(pwd));
+
+	dir = datash->args[1];
+	if (chdir(dir) == -1)
 	{
-		if (str[1][0] == '~')		
-                       {
-			dir = get_env("HOME", env);
-			dir = c_strcat(dir, str[1]);
-		}
-		else if (str[1][0] == '-')
-		{
-			if (str[1][1] == '\0')
-				dir = get_env("OLDPWD", env);
-		}
-		else 
-		{
-			if (str[1][0] != '/')
-			{
-				dir = getcwd(dir, 0);
-				dir = _strcat(dir, "/");
-				dir = _strcat(dir, str[1]);
-			}
-			else
-				dir = _strdup(str[1]);
-		}
-		exit_stat = cd_execute(env, current, dir, str[1], num);
-		free(dir);
+		get_error(datash, 2);
+		return;
 	}
-	else 
-		cd_only(env, current);
-	free_double_ptr(str); 
-	return (exit_stat);
+
+	cp_pwd = _strdup(pwd);
+	set_env("OLDPWD", cp_pwd, datash);
+
+	cp_dir = _strdup(dir);
+	set_env("PWD", cp_dir, datash);
+
+	free(cp_pwd);
+	free(cp_dir);
+
+	datash->status = 0;
+
+	chdir(dir);
+}
+
+/**
+ * cd_previous - changes to the previous directory
+ *
+ * @datash: data relevant (environ)
+ * Return: no return
+ */
+void cd_previous(data_shell *datash)
+{
+	char pwd[PATH_MAX];
+	char *p_pwd, *p_oldpwd, *cp_pwd, *cp_oldpwd;
+
+	getcwd(pwd, sizeof(pwd));
+	cp_pwd = _strdup(pwd);
+
+	p_oldpwd = _getenv("OLDPWD", datash->_environ);
+
+	if (p_oldpwd == NULL)
+		cp_oldpwd = cp_pwd;
+	else
+		cp_oldpwd = _strdup(p_oldpwd);
+
+	set_env("OLDPWD", cp_pwd, datash);
+
+	if (chdir(cp_oldpwd) == -1)
+		set_env("PWD", cp_pwd, datash);
+	else
+		set_env("PWD", cp_oldpwd, datash);
+
+	p_pwd = _getenv("PWD", datash->_environ);
+
+	write(STDOUT_FILENO, p_pwd, _strlen(p_pwd));
+	write(STDOUT_FILENO, "\n", 1);
+
+	free(cp_pwd);
+	if (p_oldpwd)
+		free(cp_oldpwd);
+
+	datash->status = 0;
+
+	chdir(p_pwd);
+}
+
+/**
+ * cd_to_home - changes to home directory
+ *
+ * @datash: data relevant (environ)
+ * Return: no return
+ */
+void cd_to_home(data_shell *datash)
+{
+	char *p_pwd, *home;
+	char pwd[PATH_MAX];
+
+	getcwd(pwd, sizeof(pwd));
+	p_pwd = _strdup(pwd);
+
+	home = _getenv("HOME", datash->_environ);
+
+	if (home == NULL)
+	{
+		set_env("OLDPWD", p_pwd, datash);
+		free(p_pwd);
+		return;
+	}
+
+	if (chdir(home) == -1)
+	{
+		get_error(datash, 2);
+		free(p_pwd);
+		return;
+	}
+
+	set_env("OLDPWD", p_pwd, datash);
+	set_env("PWD", home, datash);
+	free(p_pwd);
+	datash->status = 0;
 }
